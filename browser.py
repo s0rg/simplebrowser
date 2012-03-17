@@ -28,7 +28,7 @@ class SimpleBrowser(object):
         self._timeout = timeout
         self._debug = debug
         self._headers = headers if (headers is not None) \
-                                else [('User-Agent', 'SimpleBrowser/0.1')]
+                                else [('User-Agent', 'SimpleBrowser/0.2')]
         self._headers.append(('Connection', 'keep-alive'))
         self._head_cache = None
         self._head_changed = True
