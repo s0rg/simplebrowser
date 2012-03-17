@@ -134,7 +134,6 @@ class SimpleBrowser(object):
 
 if __name__ == '__main__':
     sb = SimpleBrowser()
-    sb.get('http://ya.ru/')
     res, doc = sb.get('http://pogoda.yandex.ru/moscow/')
     if res == client.OK:
         for div in doc.cssselect("div.b-forecast__tday"):
