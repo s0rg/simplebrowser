@@ -15,11 +15,6 @@ elif version[0] == '2':
 else:
     raise ImportError('Bad python version: ', version)
 
-try:
-    from lxml.html import document_fromstring
-except ImportError:
-    document_fromstring = lambda a: a
-
 
 class SimpleBrowser(object):
     def __init__(self, headers=None, timeout=10, debug=0):
@@ -68,9 +63,7 @@ class SimpleBrowser(object):
 
     def __build_headers(self):
         if self._head_changed:
-            self._head_cache = []
-            for h in self._headers:
-                self._head_cache.append(h)
+            self._head_cache = [h for h in self._headers]
             cs = self._cookies.output(attrs=[], header='', sep=';').strip()
             if cs:
                 self._head_cache.append(('Cookie', cs))
@@ -81,7 +74,7 @@ class SimpleBrowser(object):
         head_dict = {}
         for item, value in headers:
             item = item.lower()
-            if item in ('set-cookie', 'set-cookie2'):
+            if item.startswith('set-cookie'):
                 self._cookies.load(value)
                 self._head_changed = True
             else:
@@ -95,6 +88,7 @@ class SimpleBrowser(object):
         self._host = None
 
     def add_header(self, name, value):
+        #FIXME: change value if exists!
         self._head_changed = True
         self._headers.append((name, value))
 
@@ -103,15 +97,15 @@ class SimpleBrowser(object):
         self._cookies[name] = value
 
     def request(self, req, url, data=None):
-        if isinstance(data, dict):
-            data = urlencode(data)
-
         uri = self.__prepare_url(url)
         self._conn.putrequest(req, uri)
 
         headers = self.__build_headers()
         for hi in headers:
             self._conn.putheader(*hi)
+        if req == 'POST' and data is not None:
+            self._conn.putheader('Content-Type', 'application/x-www-form-urlencoded')
+            self._conn.putheader('Content-Length', len(data))
         self._conn.endheaders(data)
 
         resp = self._conn.getresponse()
@@ -119,16 +113,22 @@ class SimpleBrowser(object):
         resp_body = resp.read()
 
         if resp.status == client.OK:
-            return (client.OK, document_fromstring(resp_body))
+            return (client.OK, resp_body)
         elif resp.status in (client.MOVED_PERMANENTLY, client.FOUND):
             return self.request(req, headers['location'], data)
         else:
             return (resp.status, resp.reason)
 
-    def get(self, url):
+    def get(self, url, params=None):
+        if params is not None:
+            if isinstance(params, dict):
+                params = urlencode(params)
+            url = '{}?{}'.format(url, params)
         return self.request('GET', url)
 
     def post(self, url, data):
+        if isinstance(data, dict):
+            data = urlencode(data)
         return self.request('POST', url, data)
 
 
@@ -136,8 +136,7 @@ if __name__ == '__main__':
     sb = SimpleBrowser()
     res, doc = sb.get('http://pogoda.yandex.ru/moscow/')
     if res == client.OK:
-        for div in doc.cssselect("div.b-forecast__tday"):
-            print (div.text)
+        print doc
     else:
         print ('OH SHI~')
 
