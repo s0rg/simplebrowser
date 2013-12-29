@@ -1,8 +1,10 @@
 #-*- coding: utf8 -*-
+from platform import python_version_tuple
 
-import platform
+__version__ = '0.6'
+__author__ = 's0rg'
 
-version = platform.python_version_tuple()
+version = python_version_tuple()
 
 if version[0] == '3':
     from http import cookies, client
@@ -13,7 +15,15 @@ elif version[0] == '2':
     from urlparse import urlsplit
     from urllib import urlencode
 else:
-    raise ImportError('Bad python version: ', version)
+    raise ImportError('Bad python version: %s' % version)
+
+
+REDIRECT_STATES = (
+    client.MOVED_PERMANENTLY,
+    client.FOUND,
+    client.SEE_OTHER,
+    client.TEMPORARY_REDIRECT
+)
 
 
 class Response(object):
@@ -31,9 +41,13 @@ class SimpleBrowser(object):
         self._host, self._conn = None, None
         self._timeout = timeout
         self._debug = debug
-        self._headers = headers if (headers is not None) \
-                                else [('User-Agent', 'SimpleBrowser/0.2')]
-        self._headers.append(('Connection', 'keep-alive'))
+        self._headers = {
+            'User-Agent': 'SimpleBrowser/{}'.format(__version__),
+            'Connection': 'keep-alive'
+        }
+        if headers is not None:
+            self._headers.update(headers)
+
         self._head_cache = None
         self._head_changed = True
 
@@ -45,18 +59,20 @@ class SimpleBrowser(object):
             self._conn.close()
 
         if scheme == 'http':
-            self._conn = client.HTTPConnection(host, port, timeout=self._timeout)
+            self._conn = client.HTTPConnection(host, port,
+                                               timeout=self._timeout)
         elif scheme == 'https':
-            self._conn = client.HTTPSConnection(host, port, timeout=self._timeout)
+            self._conn = client.HTTPSConnection(host, port,
+                                                timeout=self._timeout)
         else:
-            raise ValueError('Unknown scheme: %s' % scheme)
+            raise ValueError('Invalid scheme: %s' % scheme)
+
         self._host = host
         self._conn.set_debuglevel(self._debug)
 
     def __prepare_url(self, url):
         parsed = urlsplit(url, scheme='http')
-        host = parsed.netloc if parsed.netloc \
-                             else self._host
+        host = parsed.netloc or self._host
         scheme = parsed.scheme.lower()
         if parsed.port:
             port = parsed.port
@@ -76,7 +92,7 @@ class SimpleBrowser(object):
 
     def __build_headers(self):
         if self._head_changed:
-            self._head_cache = [h for h in self._headers]
+            self._head_cache = self._headers.items()
             cs = self._cookies.output(attrs=[], header='', sep=';').strip()
             if cs:
                 self._head_cache.append(('Cookie', cs))
@@ -131,14 +147,15 @@ class SimpleBrowser(object):
         headers = self.__parse_headers(resp_headers)
 
         if resp.status == client.OK:
-            return Response(client.OK, resp_headers, resp_body)
-        elif resp.status in (client.MOVED_PERMANENTLY, client.FOUND):
+            body = resp_body
+        elif resp.status in REDIRECT_STATES:
             if allow_redirect:
                 return self.request(req, headers['location'], data)
-            else:
-                return Response(resp.status, headers)
+            body = None
         else:
-            return Response(resp.status, resp_headers, resp.reason)
+            body = resp.reason
+
+        return Response(resp.status, headers, body)
 
     def get(self, url, params=None, allow_redirect=True):
         if params is not None:
